@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"golang.org/x/net/context"
-	"gopkg.in/ini.v1"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -17,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+        "golang.org/x/net/context"
+        "gopkg.in/ini.v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
