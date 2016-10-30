@@ -15,12 +15,13 @@ import (
 	"syscall"
 	"time"
 
-        "golang.org/x/net/context"
-        "gopkg.in/ini.v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
+	"github.com/tomasen/fcgi_client"
+	"golang.org/x/net/context"
+	"gopkg.in/ini.v1"
 )
 
 const (
@@ -116,12 +117,12 @@ func (e *PhpFpmPoolExporter) Collect(ch chan<- prometheus.Metric) {
 		(e.idleProcesses.WithLabelValues(p.Name)).Set(float64(lastMetric.IdleProcesses))
 		(e.activeProcesses.WithLabelValues(p.Name)).Set(float64(lastMetric.ActiveProcesses))
 		(e.totalProcesses.WithLabelValues(p.Name)).Set(float64(lastMetric.TotalProcesses))
-		(e.startSince.WithLabelValues(p.Name)).Set(float64(lastMetric.StartSince))
-		(e.acceptedConn.WithLabelValues(p.Name)).Set(float64(lastMetric.AcceptedConn))
-		(e.maxListenQueue.WithLabelValues(p.Name)).Set(float64(lastMetric.MaxListenQueue))
-		(e.maxActiveProcesses.WithLabelValues(p.Name)).Set(float64(lastMetric.MaxActiveProcesses))
-		(e.maxChildrenReached.WithLabelValues(p.Name)).Set(float64(lastMetric.MaxChildrenReached))
-		(e.slowRequests.WithLabelValues(p.Name)).Set(float64(lastMetric.SlowRequests))
+		(e.startSince.WithLabelValues(p.Name)).Add(float64(lastMetric.StartSince))
+		(e.acceptedConn.WithLabelValues(p.Name)).Add(float64(lastMetric.AcceptedConn))
+		(e.maxListenQueue.WithLabelValues(p.Name)).Add(float64(lastMetric.MaxListenQueue))
+		(e.maxActiveProcesses.WithLabelValues(p.Name)).Add(float64(lastMetric.MaxActiveProcesses))
+		(e.maxChildrenReached.WithLabelValues(p.Name)).Add(float64(lastMetric.MaxChildrenReached))
+		(e.slowRequests.WithLabelValues(p.Name)).Add(float64(lastMetric.SlowRequests))
 
 		(e.listenQueue.WithLabelValues(p.Name)).Collect(ch)
 		(e.listenQueueLen.WithLabelValues(p.Name)).Collect(ch)
@@ -264,6 +265,64 @@ func GetFilesIn(dirPath string) []string {
 	return poolFiles
 }
 
+func PollFpmStatusMetricsNativeClient(p *PhpFpmPool, pollInterval int, pollTimeout int, cgiFastCgiPath string, cgiFastCgiLdLibPath string, mustQuit chan bool, done chan bool) {
+	poolCpy := p.GetSyncedCopy()
+
+	env := make(map[string]string)
+	env["SCRIPT_NAME"] = poolCpy.StatusUri
+	env["SCRIPT_FILENAME"] = poolCpy.StatusUri
+	env["QUERY_STRING"] = "json"
+	env["SERVER_SOFTWARE"] = "go / fcgiclient"
+	env["REMOTE_ADDR"] = "127.0.0.1"
+
+	var mts FpmPoolMetrics
+
+	for i := 0; i < 1; {
+		fcgi, err := fcgiclient.DialTimeout("unix", poolCpy.Endpoint, time.Duration(500*int(time.Millisecond)))
+		if err != nil {
+			log.Errorln(err.Error())
+			continue
+		}
+
+		resp, err := fcgi.Get(env)
+		if err != nil {
+			log.Errorln(err.Error())
+			continue
+		}
+
+		content, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Errorln(err.Error())
+			fcgi.Close()
+			continue
+		}
+
+		err = json.Unmarshal(content, &mts)
+
+		if err != nil {
+			log.Errorln(err.Error())
+			fcgi.Close()
+			continue
+		}
+
+		p.PushSyncedLastMetrics(&mts)
+		fcgi.Close()
+
+		time.Sleep(time.Duration(pollInterval * int(time.Second)))
+		select {
+		case <-mustQuit:
+			i = 1
+			log.Infoln("Goroutine received signal asking to quit")
+			done <- true
+			return
+		default:
+			continue
+		}
+	}
+
+	return
+}
+
 func PollFpmStatusMetrics(p *PhpFpmPool, pollInterval int, pollTimeout int, cgiFastCgiPath string, cgiFastCgiLdLibPath string, mustQuit chan bool, done chan bool) {
 	poolCpy := p.GetSyncedCopy()
 
@@ -303,6 +362,7 @@ func PollFpmStatusMetrics(p *PhpFpmPool, pollInterval int, pollTimeout int, cgiF
 			}
 
 			err := json.Unmarshal([]byte(strData[1]), &mts)
+
 			if err != nil {
 				log.Errorln(err.Error())
 				continue
@@ -407,7 +467,7 @@ func main() {
 
 		sectionsCount++
 
-		go PollFpmStatusMetrics(&pool, *pollInterval, *pollTimeout, *cgiFastCgiPath, *cgiFastCgiLdLibPath, mustQuit, done)
+		go PollFpmStatusMetricsNativeClient(&pool, *pollInterval, *pollTimeout, *cgiFastCgiPath, *cgiFastCgiLdLibPath, mustQuit, done)
 
 		phpFpmPools = append(phpFpmPools, &pool)
 	}
