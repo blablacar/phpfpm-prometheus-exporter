@@ -267,18 +267,32 @@ func GetFilesIn(dirPath string) []string {
 
 func PollFpmStatusMetricsNativeClient(p *PhpFpmPool, pollInterval int, pollTimeout int, cgiFastCgiPath string, cgiFastCgiLdLibPath string, mustQuit chan bool, done chan bool) {
 	poolCpy := p.GetSyncedCopy()
+	endpoint := poolCpy.Endpoint
 
 	env := make(map[string]string)
 	env["SCRIPT_NAME"] = poolCpy.StatusUri
 	env["SCRIPT_FILENAME"] = poolCpy.StatusUri
 	env["QUERY_STRING"] = "json"
-	env["SERVER_SOFTWARE"] = "go / fcgiclient"
-	env["REMOTE_ADDR"] = "127.0.0.1"
+	env["SERVER_SOFTWARE"] = "go/fcgiclient"
 
 	var mts FpmPoolMetrics
 
+	var netType string
+	fileInfo, err := os.Stat(endpoint)
+	if err != nil {
+		netType = "tcp"
+	} else {
+		if fileInfo.Mode()&os.ModeSocket != 0 {
+			netType = "unix"
+		} else {
+			netType = "tcp"
+		}
+	}
+
+	log.Infoln(endpoint + " has been identified as " + netType + " network type")
+
 	for i := 0; i < 1; {
-		fcgi, err := fcgiclient.DialTimeout("unix", poolCpy.Endpoint, time.Duration(500*int(time.Millisecond)))
+		fcgi, err := fcgiclient.DialTimeout(netType, endpoint, time.Duration(500*int(time.Millisecond)))
 		if err != nil {
 			log.Errorln(err.Error())
 			continue
