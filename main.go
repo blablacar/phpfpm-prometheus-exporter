@@ -406,7 +406,7 @@ func main() {
 		phpfpmPidFile       = flag.String("phpfpm.pid-file", "/var/run/php5-fpm.pid", "Path to phpfpm's pid file.")
 		configDir           = flag.String("phpfpm.config", "/etc/php5/fpm/pool.d/", "Pools conf dir")
 		pollInterval        = flag.Int("phpfpm.poll-interval", 10, "Poll interval in seconds")
-		pollTimeout         = flag.Int("phpfpm.poll-timeout", 2, "Poll timeout in seconds")
+		pollTimeout         = flag.Int("cgi-fcgi.poll-timeout", 2, "Poll timeout in seconds")
 		cgiFastCgiPath      = flag.String("cgi-fcgi.path", "/usr/bin/cgi-fcgi", "cgi-fcgi program path")
 		cgiFastCgiLdLibPath = flag.String("cgi-fcgi.ld-library-path", "", "LD_LIBRARY_PATH value to run cgi-fcgi")
 		showVersion         = flag.Bool("version", false, "Print version information.")
@@ -421,9 +421,6 @@ func main() {
 
 	log.Infoln("Starting phpfpm_exporter", version.Info())
 	log.Infoln("Build context", version.BuildContext())
-
-	//TODO:
-	// - Test requirement: cgi-fcgi
 
 	if *phpfpmPidFile != "" {
 		procExporter := prometheus.NewProcessCollectorPIDFn(
