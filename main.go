@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -265,7 +266,40 @@ func GetFilesIn(dirPath string) []string {
 	return poolFiles
 }
 
-func PollFpmStatusMetricsNativeClient(p *PhpFpmPool, pollInterval int, pollTimeout int, cgiFastCgiPath string, cgiFastCgiLdLibPath string, mustQuit chan bool, done chan bool) {
+func PollFpmStatusMetrics(p *PhpFpmPool, fetcher func() (string, error), pollInterval int, mustQuit chan bool, done chan bool) {
+
+	var mts FpmPoolMetrics
+	var res string
+	var err error
+
+	for i := 0; i < 1; {
+		res, err = fetcher()
+		if err != nil {
+			log.Errorln(err.Error())
+		} else {
+			err = json.Unmarshal([]byte(res), &mts)
+
+			if err != nil {
+				log.Errorln(err.Error())
+			} else {
+				p.PushSyncedLastMetrics(&mts)
+			}
+		}
+
+		time.Sleep(time.Duration(pollInterval * int(time.Second)))
+		select {
+		case <-mustQuit:
+			i = 1
+			log.Infoln("Goroutine received signal asking to quit")
+			done <- true
+		default:
+			continue
+		}
+	}
+	return
+}
+
+func NativeClientFcgiStatusFetcher(p *PhpFpmPool, fcgiConnectTimeout int) func() (string, error) {
 	poolCpy := p.GetSyncedCopy()
 	endpoint := poolCpy.Endpoint
 
@@ -274,8 +308,6 @@ func PollFpmStatusMetricsNativeClient(p *PhpFpmPool, pollInterval int, pollTimeo
 	env["SCRIPT_FILENAME"] = poolCpy.StatusUri
 	env["QUERY_STRING"] = "json"
 	env["SERVER_SOFTWARE"] = "go/fcgiclient"
-
-	var mts FpmPoolMetrics
 
 	var netType string
 	fileInfo, err := os.Stat(endpoint)
@@ -291,54 +323,34 @@ func PollFpmStatusMetricsNativeClient(p *PhpFpmPool, pollInterval int, pollTimeo
 
 	log.Infoln(endpoint + " has been identified as " + netType + " network type")
 
-	for i := 0; i < 1; {
-		fcgi, err := fcgiclient.DialTimeout(netType, endpoint, time.Duration(500*int(time.Millisecond)))
+	return func() (string, error) {
+		fcgi, err := fcgiclient.DialTimeout(netType, endpoint, time.Duration(fcgiConnectTimeout*int(time.Millisecond)))
 		if err != nil {
-			log.Errorln(err.Error())
-			continue
+			return "", err
 		}
+
+		defer fcgi.Close()
 
 		resp, err := fcgi.Get(env)
 		if err != nil {
-			log.Errorln(err.Error())
-			continue
+			//fcgi.Close()
+			return "", err
 		}
 
 		content, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Errorln(err.Error())
-			fcgi.Close()
-			continue
+			//fcgi.Close()
+			return "", err
 		}
 
-		err = json.Unmarshal(content, &mts)
-
-		if err != nil {
-			log.Errorln(err.Error())
-			fcgi.Close()
-			continue
-		}
-
-		p.PushSyncedLastMetrics(&mts)
-		fcgi.Close()
-
-		time.Sleep(time.Duration(pollInterval * int(time.Second)))
-		select {
-		case <-mustQuit:
-			i = 1
-			log.Infoln("Goroutine received signal asking to quit")
-			done <- true
-			return
-		default:
-			continue
-		}
+		//fcgi.Close()
+		return string(content), nil
 	}
-
-	return
 }
 
-func PollFpmStatusMetrics(p *PhpFpmPool, pollInterval int, pollTimeout int, cgiFastCgiPath string, cgiFastCgiLdLibPath string, mustQuit chan bool, done chan bool) {
+func CgiFcgiFcgiStatusFetcher(p *PhpFpmPool, pollTimeout int, cgiFastCgiPath string, cgiFastCgiLdLibPath string) func() (string, error) {
 	poolCpy := p.GetSyncedCopy()
+	endpoint := poolCpy.Endpoint
 
 	env := os.Environ()
 
@@ -351,52 +363,29 @@ func PollFpmStatusMetrics(p *PhpFpmPool, pollInterval int, pollTimeout int, cgiF
 	env = append(env, "QUERY_STRING=json")
 	env = append(env, "REQUEST_METHOD=GET")
 
-	var data []byte
-	var err error
-	var mts FpmPoolMetrics
-	var strData []string
+	return func() (string, error) {
+		var data []byte
+		var err error
+		var strData []string
 
-	for i := 0; i < 1; {
 		ctx := context.TODO()
 		ctxWithCancel, cancel := context.WithTimeout(ctx, time.Duration(pollTimeout*int(time.Second)))
 		defer cancel()
 
-		cmd := exec.CommandContext(ctxWithCancel, cgiFastCgiPath, "-bind", "-connect", poolCpy.Endpoint)
+		cmd := exec.CommandContext(ctxWithCancel, cgiFastCgiPath, "-bind", "-connect", endpoint)
 		cmd.Env = env
 		data, err = cmd.Output()
 		if err != nil {
-			log.Errorln(err.Error())
-			continue
-		} else {
-
-			strData = strings.SplitAfter(string(data), "\r\n\r\n")
-			if len(strData) < 2 {
-				log.Errorln("Unexpected cgi-fcgi response")
-				continue
-			}
-
-			err := json.Unmarshal([]byte(strData[1]), &mts)
-
-			if err != nil {
-				log.Errorln(err.Error())
-				continue
-			}
-
-			p.PushSyncedLastMetrics(&mts)
+			return "", err
 		}
 
-		time.Sleep(time.Duration(pollInterval * int(time.Second)))
-		select {
-		case <-mustQuit:
-			i = 1
-			log.Infoln("Goroutine received signal asking to quit")
-			done <- true
-			return
-		default:
-			continue
+		strData = strings.SplitAfter(string(data), "\r\n\r\n")
+		if len(strData) < 2 {
+			return "", errors.New("Unexpected cgi-fcgi response")
 		}
+
+		return strData[1], nil
 	}
-	return
 }
 
 func main() {
@@ -406,6 +395,8 @@ func main() {
 		phpfpmPidFile       = flag.String("phpfpm.pid-file", "/var/run/php5-fpm.pid", "Path to phpfpm's pid file.")
 		configDir           = flag.String("phpfpm.config", "/etc/php5/fpm/pool.d/", "Pools conf dir")
 		pollInterval        = flag.Int("phpfpm.poll-interval", 10, "Poll interval in seconds")
+		useNativeClient     = flag.Bool("phpfpm.use-native-client", true, "Use a native go client to get status or use external cgi-fcgi command")
+		ncConnectTimeout    = flag.Int("nc.connect-timeout", 2, "Native client connect timeout")
 		pollTimeout         = flag.Int("cgi-fcgi.poll-timeout", 2, "Poll timeout in seconds")
 		cgiFastCgiPath      = flag.String("cgi-fcgi.path", "/usr/bin/cgi-fcgi", "cgi-fcgi program path")
 		cgiFastCgiLdLibPath = flag.String("cgi-fcgi.ld-library-path", "", "LD_LIBRARY_PATH value to run cgi-fcgi")
@@ -478,7 +469,15 @@ func main() {
 
 		sectionsCount++
 
-		go PollFpmStatusMetricsNativeClient(&pool, *pollInterval, *pollTimeout, *cgiFastCgiPath, *cgiFastCgiLdLibPath, mustQuit, done)
+		var fetcher func() (string, error)
+
+		if *useNativeClient {
+			fetcher = NativeClientFcgiStatusFetcher(&pool, *ncConnectTimeout)
+		} else {
+			fetcher = CgiFcgiFcgiStatusFetcher(&pool, *pollTimeout, *cgiFastCgiPath, *cgiFastCgiLdLibPath)
+		}
+
+		go PollFpmStatusMetrics(&pool, fetcher, *pollInterval, mustQuit, done)
 
 		phpFpmPools = append(phpFpmPools, &pool)
 	}
