@@ -48,6 +48,7 @@ type PhpFpmPool struct {
 	Name        string
 	Endpoint    string
 	StatusUri   string
+	networkType string
 	lastMetrics FpmPoolMetrics
 	mu          sync.RWMutex
 }
@@ -78,6 +79,20 @@ func (p *PhpFpmPool) GetSyncedCopy() PhpFpmPool {
 	p.mu.Unlock()
 
 	return *pfp
+}
+
+func (p *PhpFpmPool) GetSyncedNetworkType() string {
+	p.mu.Lock()
+	nt := p.networkType
+	p.mu.Unlock()
+
+	return nt
+}
+
+func (p *PhpFpmPool) SetSyncedNetworkType(nt string) {
+	p.mu.Lock()
+	p.networkType = nt
+	p.mu.Unlock()
 }
 
 func (p *PhpFpmPool) PushSyncedLastMetrics(fpm *FpmPoolMetrics) {
@@ -330,20 +345,24 @@ func NativeClientFcgiStatusFetcher(p *PhpFpmPool, fcgiConnectTimeout int) func()
 	env["SERVER_SOFTWARE"] = "go/fcgiclient"
 
 	return func() (string, error) {
-
-		var netType string
-		fileInfo, err := os.Stat(endpoint)
-		if err != nil {
-			netType = "tcp"
-		} else {
-			if fileInfo.Mode()&os.ModeSocket != 0 {
-				netType = "unix"
-			} else {
+		netType := poolCpy.GetSyncedNetworkType()
+		isNetTypeSet := false
+		if netType == "" {
+			fileInfo, err := os.Stat(endpoint)
+			if err != nil {
 				netType = "tcp"
+			} else {
+				if fileInfo.Mode()&os.ModeSocket != 0 {
+					netType = "unix"
+				} else {
+					netType = "tcp"
+				}
 			}
-		}
 
-		log.Debugln(endpoint + " has been identified as " + netType + " network type")
+			log.Debugln(endpoint + " will be fetched through " + netType + " network type")
+		} else {
+			isNetTypeSet = true
+		}
 
 		fcgi, err := fcgiclient.DialTimeout(netType, endpoint, time.Duration(fcgiConnectTimeout*int(time.Millisecond)))
 		if err != nil {
@@ -364,6 +383,10 @@ func NativeClientFcgiStatusFetcher(p *PhpFpmPool, fcgiConnectTimeout int) func()
 			return "", err
 		}
 
+		if !isNetTypeSet {
+			poolCpy.SetSyncedNetworkType(netType)
+			log.Debugln(endpoint + " is a pool using " + netType + " network type")
+		}
 		//fcgi.Close()
 		return string(content), nil
 	}
