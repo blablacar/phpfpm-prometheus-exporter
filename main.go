@@ -136,6 +136,8 @@ func (e *PhpFpmPoolExporter) Collect(ch chan<- prometheus.Metric) {
 		(e.maxActiveProcesses.WithLabelValues(p.Name)).Collect(ch)
 		(e.maxChildrenReached.WithLabelValues(p.Name)).Collect(ch)
 		(e.slowRequests.WithLabelValues(p.Name)).Collect(ch)
+
+		log.Debugln("Metrics collection completed!")
 	}
 }
 
@@ -274,6 +276,9 @@ func PollFpmStatusMetrics(p *PhpFpmPool, fetcher func() (string, error), pollInt
 
 	for i := 0; i < 1; {
 		res, err = fetcher()
+
+		log.Debugln(p.Name + " has just been fetched")
+
 		if err != nil {
 			log.Errorln(err.Error())
 		} else {
@@ -282,7 +287,22 @@ func PollFpmStatusMetrics(p *PhpFpmPool, fetcher func() (string, error), pollInt
 			if err != nil {
 				log.Errorln(err.Error())
 			} else {
+
+				log.Debugln(p.Name + " - StartTime read on status: " + strconv.Itoa(mts.StartTime))
+				log.Debugln(p.Name + " - StartSince read on status: " + strconv.Itoa(mts.StartSince))
+				log.Debugln(p.Name + " - AcceptedConn read on status: " + strconv.Itoa(mts.AcceptedConn))
+				log.Debugln(p.Name + " - ListenQueue read on status: " + strconv.Itoa(mts.ListenQueue))
+				log.Debugln(p.Name + " - MaxListenQueue read on status: " + strconv.Itoa(mts.MaxListenQueue))
+				log.Debugln(p.Name + " - ListenQueueLen read on status: " + strconv.Itoa(mts.ListenQueueLen))
+				log.Debugln(p.Name + " - IdleProcesses read on status: " + strconv.Itoa(mts.IdleProcesses))
+				log.Debugln(p.Name + " - ActiveProcesses read on status: " + strconv.Itoa(mts.ActiveProcesses))
+				log.Debugln(p.Name + " - TotalProcesses read on status: " + strconv.Itoa(mts.TotalProcesses))
+				log.Debugln(p.Name + " - MaxActiveProcesses read on status: " + strconv.Itoa(mts.MaxActiveProcesses))
+				log.Debugln(p.Name + " - MaxChildrenReached read on status: " + strconv.Itoa(mts.MaxChildrenReached))
+				log.Debugln(p.Name + " - SlowRequests read on status: " + strconv.Itoa(mts.SlowRequests))
+
 				p.PushSyncedLastMetrics(&mts)
+				log.Debugln(p.Name + " - Metrics pushed to pool structure")
 			}
 		}
 
@@ -414,6 +434,8 @@ func main() {
 	log.Infoln("Build context", version.BuildContext())
 
 	if *phpfpmPidFile != "" {
+		log.Debugln("Export master process metrics enabled")
+
 		procExporter := prometheus.NewProcessCollectorPIDFn(
 			func() (int, error) {
 				content, err := ioutil.ReadFile(*phpfpmPidFile)
@@ -427,6 +449,8 @@ func main() {
 				return value, nil
 			}, namespace)
 		prometheus.MustRegister(procExporter)
+	} else {
+		log.Debugln("Export master process metrics disabled")
 	}
 
 	sigs := make(chan os.Signal)
@@ -466,6 +490,23 @@ func main() {
 		}
 
 		pool := PhpFpmPool{Name: sect, Endpoint: listenKey.String(), StatusUri: statusKey.String()}
+
+		mts := FpmPoolMetrics{
+			StartTime:          0,
+			StartSince:         0,
+			AcceptedConn:       0,
+			ListenQueue:        0,
+			MaxListenQueue:     0,
+			ListenQueueLen:     0,
+			IdleProcesses:      0,
+			ActiveProcesses:    0,
+			TotalProcesses:     0,
+			MaxActiveProcesses: 0,
+			MaxChildrenReached: 0,
+			SlowRequests:       0,
+		}
+
+		pool.PushSyncedLastMetrics(&mts)
 
 		sectionsCount++
 
