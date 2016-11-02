@@ -277,7 +277,7 @@ func PollFpmStatusMetrics(p *PhpFpmPool, fetcher func() (string, error), pollInt
 	for i := 0; i < 1; {
 		res, err = fetcher()
 
-		log.Debugln(p.Name + " has just been fetched")
+		log.Debugln(p.Name + " - End of fetch logic")
 
 		if err != nil {
 			log.Errorln(err.Error())
@@ -329,21 +329,22 @@ func NativeClientFcgiStatusFetcher(p *PhpFpmPool, fcgiConnectTimeout int) func()
 	env["QUERY_STRING"] = "json"
 	env["SERVER_SOFTWARE"] = "go/fcgiclient"
 
-	var netType string
-	fileInfo, err := os.Stat(endpoint)
-	if err != nil {
-		netType = "tcp"
-	} else {
-		if fileInfo.Mode()&os.ModeSocket != 0 {
-			netType = "unix"
-		} else {
-			netType = "tcp"
-		}
-	}
-
-	log.Infoln(endpoint + " has been identified as " + netType + " network type")
-
 	return func() (string, error) {
+
+		var netType string
+		fileInfo, err := os.Stat(endpoint)
+		if err != nil {
+			netType = "tcp"
+		} else {
+			if fileInfo.Mode()&os.ModeSocket != 0 {
+				netType = "unix"
+			} else {
+				netType = "tcp"
+			}
+		}
+
+		log.Debugln(endpoint + " has been identified as " + netType + " network type")
+
 		fcgi, err := fcgiclient.DialTimeout(netType, endpoint, time.Duration(fcgiConnectTimeout*int(time.Millisecond)))
 		if err != nil {
 			return "", err
