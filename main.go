@@ -440,7 +440,7 @@ func main() {
 		configDir           = flag.String("phpfpm.config", "/etc/php5/fpm/pool.d/", "Pools conf dir")
 		pollInterval        = flag.Int("phpfpm.poll-interval", 10, "Poll interval in seconds")
 		useNativeClient     = flag.Bool("phpfpm.use-native-client", true, "Use a native go client to get status or use external cgi-fcgi command")
-		ncConnectTimeout    = flag.Int("nc.connect-timeout", 2, "Native client connect timeout")
+		ncConnectTimeout    = flag.Int("nc.connect-timeout", 500, "Native client connect timeout in ms")
 		pollTimeout         = flag.Int("cgi-fcgi.poll-timeout", 2, "Poll timeout in seconds")
 		cgiFastCgiPath      = flag.String("cgi-fcgi.path", "/usr/bin/cgi-fcgi", "cgi-fcgi program path")
 		cgiFastCgiLdLibPath = flag.String("cgi-fcgi.ld-library-path", "", "LD_LIBRARY_PATH value to run cgi-fcgi")
