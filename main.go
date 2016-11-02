@@ -292,7 +292,7 @@ func PollFpmStatusMetrics(p *PhpFpmPool, fetcher func() (string, error), pollInt
 	for i := 0; i < 1; {
 		res, err = fetcher()
 
-		log.Debugln(p.Name + " - End of fetch logic")
+		log.Debugln(p.Name, " - End of fetch logic")
 
 		if err != nil {
 			log.Errorln(err.Error())
@@ -303,21 +303,21 @@ func PollFpmStatusMetrics(p *PhpFpmPool, fetcher func() (string, error), pollInt
 				log.Errorln(err.Error())
 			} else {
 
-				log.Debugln(p.Name + " - StartTime read on status: " + strconv.Itoa(mts.StartTime))
-				log.Debugln(p.Name + " - StartSince read on status: " + strconv.Itoa(mts.StartSince))
-				log.Debugln(p.Name + " - AcceptedConn read on status: " + strconv.Itoa(mts.AcceptedConn))
-				log.Debugln(p.Name + " - ListenQueue read on status: " + strconv.Itoa(mts.ListenQueue))
-				log.Debugln(p.Name + " - MaxListenQueue read on status: " + strconv.Itoa(mts.MaxListenQueue))
-				log.Debugln(p.Name + " - ListenQueueLen read on status: " + strconv.Itoa(mts.ListenQueueLen))
-				log.Debugln(p.Name + " - IdleProcesses read on status: " + strconv.Itoa(mts.IdleProcesses))
-				log.Debugln(p.Name + " - ActiveProcesses read on status: " + strconv.Itoa(mts.ActiveProcesses))
-				log.Debugln(p.Name + " - TotalProcesses read on status: " + strconv.Itoa(mts.TotalProcesses))
-				log.Debugln(p.Name + " - MaxActiveProcesses read on status: " + strconv.Itoa(mts.MaxActiveProcesses))
-				log.Debugln(p.Name + " - MaxChildrenReached read on status: " + strconv.Itoa(mts.MaxChildrenReached))
-				log.Debugln(p.Name + " - SlowRequests read on status: " + strconv.Itoa(mts.SlowRequests))
+				log.Debugln(p.Name, " - StartTime read on status: ", strconv.Itoa(mts.StartTime))
+				log.Debugln(p.Name, " - StartSince read on status: ", strconv.Itoa(mts.StartSince))
+				log.Debugln(p.Name, " - AcceptedConn read on status: ", strconv.Itoa(mts.AcceptedConn))
+				log.Debugln(p.Name, " - ListenQueue read on status: ", strconv.Itoa(mts.ListenQueue))
+				log.Debugln(p.Name, " - MaxListenQueue read on status: ", strconv.Itoa(mts.MaxListenQueue))
+				log.Debugln(p.Name, " - ListenQueueLen read on status: ", strconv.Itoa(mts.ListenQueueLen))
+				log.Debugln(p.Name, " - IdleProcesses read on status: ", strconv.Itoa(mts.IdleProcesses))
+				log.Debugln(p.Name, " - ActiveProcesses read on status: ", strconv.Itoa(mts.ActiveProcesses))
+				log.Debugln(p.Name, " - TotalProcesses read on status: ", strconv.Itoa(mts.TotalProcesses))
+				log.Debugln(p.Name, " - MaxActiveProcesses read on status: ", strconv.Itoa(mts.MaxActiveProcesses))
+				log.Debugln(p.Name, " - MaxChildrenReached read on status: ", strconv.Itoa(mts.MaxChildrenReached))
+				log.Debugln(p.Name, " - SlowRequests read on status: ", strconv.Itoa(mts.SlowRequests))
 
 				p.PushSyncedLastMetrics(&mts)
-				log.Debugln(p.Name + " - Metrics pushed to pool structure")
+				log.Debugln(p.Name, " - Metrics pushed to pool structure")
 			}
 		}
 
@@ -359,7 +359,7 @@ func NativeClientFcgiStatusFetcher(p *PhpFpmPool, fcgiConnectTimeout int) func()
 				}
 			}
 
-			log.Debugln(endpoint + " will be fetched through " + netType + " network type")
+			log.Debugln(endpoint, " will be fetched through ", netType, " network type")
 		} else {
 			isNetTypeSet = true
 		}
@@ -385,7 +385,7 @@ func NativeClientFcgiStatusFetcher(p *PhpFpmPool, fcgiConnectTimeout int) func()
 
 		if !isNetTypeSet {
 			poolCpy.SetSyncedNetworkType(netType)
-			log.Debugln(endpoint + " is a pool using " + netType + " network type")
+			log.Debugln(endpoint, " is a pool using ", netType, " network type")
 		}
 		//fcgi.Close()
 		return string(content), nil
