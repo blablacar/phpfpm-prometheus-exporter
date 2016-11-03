@@ -515,23 +515,6 @@ func main() {
 
 		pool := PhpFpmPool{Name: sect, Endpoint: listenKey.String(), StatusUri: statusKey.String()}
 
-		mts := FpmPoolMetrics{
-			StartTime:          0,
-			StartSince:         0,
-			AcceptedConn:       0,
-			ListenQueue:        0,
-			MaxListenQueue:     0,
-			ListenQueueLen:     0,
-			IdleProcesses:      0,
-			ActiveProcesses:    0,
-			TotalProcesses:     0,
-			MaxActiveProcesses: 0,
-			MaxChildrenReached: 0,
-			SlowRequests:       0,
-		}
-
-		pool.PushSyncedLastMetrics(&mts)
-
 		sectionsCount++
 
 		var fetcher func() (string, error)
