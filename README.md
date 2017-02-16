@@ -96,7 +96,7 @@ Copy builded exporter:
 
 Create Systemd file:
 
-	vim /etc/systemd/system/promotheus_php-fpm_exporter.service
+	vim /etc/systemd/system/promotheus_phpfpm_exporter.service
 
 Add the following configuration:
 
@@ -113,9 +113,9 @@ Add the following configuration:
 Start and enable service:
 
 	systemctl daemon-reload
-	systemctl start promotheus_php-fpm_exporter.service
-	systemctl enable promotheus_php-fpm_exporter.service
+	systemctl start promotheus_phpfpm_exporter.service
+	systemctl enable promotheus_phpfpm_exporter.service
 
 Check the process is running:
 
-	systemctl status promotheus_php-fpm_exporter.service
+	systemctl status promotheus_phpfpm_exporter.service
