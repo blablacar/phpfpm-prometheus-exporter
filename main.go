@@ -42,6 +42,7 @@ type FpmPoolMetrics struct {
 	MaxActiveProcesses int `json:"max active processes"`
 	MaxChildrenReached int `json:"max children reached"`
 	SlowRequests       int `json:"slow requests"`
+	Up                 int `json:"up"`
 }
 
 type PhpFpmPool struct {
@@ -56,7 +57,7 @@ type PhpFpmPool struct {
 type PhpFpmPoolExporter struct {
 	poolsToMonitor                                                                                 []*PhpFpmPool
 	listenQueue, listenQueueLen, idleProcesses, activeProcesses, totalProcesses                    *prometheus.GaugeVec
-	startSince, acceptedConn, maxListenQueue, maxActiveProcesses, maxChildrenReached, slowRequests *prometheus.CounterVec
+	startSince, acceptedConn, maxListenQueue, maxActiveProcesses, maxChildrenReached, slowRequests, up *prometheus.CounterVec
 }
 
 func (e *PhpFpmPoolExporter) resetMetrics() {
@@ -69,6 +70,7 @@ func (e *PhpFpmPoolExporter) resetMetrics() {
 	e.acceptedConn.Reset()
 	e.maxListenQueue.Reset()
 	e.maxActiveProcesses.Reset()
+	e.up.Reset()
 	e.maxChildrenReached.Reset()
 	e.slowRequests.Reset()
 }
@@ -119,6 +121,7 @@ func (e *PhpFpmPoolExporter) Describe(ch chan<- *prometheus.Desc) {
 	e.acceptedConn.Describe(ch)
 	e.maxListenQueue.Describe(ch)
 	e.maxActiveProcesses.Describe(ch)
+	e.up.Describe(ch)
 	e.maxChildrenReached.Describe(ch)
 	e.slowRequests.Describe(ch)
 }
@@ -137,6 +140,7 @@ func (e *PhpFpmPoolExporter) Collect(ch chan<- prometheus.Metric) {
 		(e.acceptedConn.WithLabelValues(p.Name)).Add(float64(lastMetric.AcceptedConn))
 		(e.maxListenQueue.WithLabelValues(p.Name)).Add(float64(lastMetric.MaxListenQueue))
 		(e.maxActiveProcesses.WithLabelValues(p.Name)).Add(float64(lastMetric.MaxActiveProcesses))
+		(e.up.WithLabelValues(p.Name)).Add(float64(lastMetric.Up))
 		(e.maxChildrenReached.WithLabelValues(p.Name)).Add(float64(lastMetric.MaxChildrenReached))
 		(e.slowRequests.WithLabelValues(p.Name)).Add(float64(lastMetric.SlowRequests))
 
@@ -149,6 +153,7 @@ func (e *PhpFpmPoolExporter) Collect(ch chan<- prometheus.Metric) {
 		(e.acceptedConn.WithLabelValues(p.Name)).Collect(ch)
 		(e.maxListenQueue.WithLabelValues(p.Name)).Collect(ch)
 		(e.maxActiveProcesses.WithLabelValues(p.Name)).Collect(ch)
+		(e.up.WithLabelValues(p.Name)).Collect(ch)
 		(e.maxChildrenReached.WithLabelValues(p.Name)).Collect(ch)
 		(e.slowRequests.WithLabelValues(p.Name)).Collect(ch)
 
@@ -249,6 +254,14 @@ func NewPhpFpmPoolExporter(pools []*PhpFpmPool) *PhpFpmPoolExporter {
 			},
 			poolLabelNames,
 		),
+		up: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "up",
+				Help:      "Whether the PHP-FPM process is up.",
+			},
+			poolLabelNames,
+		),
 	}
 }
 
@@ -296,12 +309,19 @@ func PollFpmStatusMetrics(p *PhpFpmPool, fetcher func() (string, error), pollInt
 
 		if err != nil {
 			log.Errorln(err.Error())
+
+			// Mark PHP-PFPM process as down
+			mts.Up = 0
+
+			p.PushSyncedLastMetrics(&mts)
 		} else {
 			err = json.Unmarshal([]byte(res), &mts)
 
 			if err != nil {
 				log.Errorln(err.Error())
 			} else {
+				// Mark PHP-PFPM process as up
+				mts.Up = 1
 
 				log.Debugln(p.Name, " - StartTime read on status: ", strconv.Itoa(mts.StartTime))
 				log.Debugln(p.Name, " - StartSince read on status: ", strconv.Itoa(mts.StartSince))
@@ -315,6 +335,7 @@ func PollFpmStatusMetrics(p *PhpFpmPool, fetcher func() (string, error), pollInt
 				log.Debugln(p.Name, " - MaxActiveProcesses read on status: ", strconv.Itoa(mts.MaxActiveProcesses))
 				log.Debugln(p.Name, " - MaxChildrenReached read on status: ", strconv.Itoa(mts.MaxChildrenReached))
 				log.Debugln(p.Name, " - SlowRequests read on status: ", strconv.Itoa(mts.SlowRequests))
+				log.Debugln(p.Name, " - Up status: ", strconv.Itoa(mts.Up))
 
 				p.PushSyncedLastMetrics(&mts)
 				log.Debugln(p.Name, " - Metrics pushed to pool structure")
